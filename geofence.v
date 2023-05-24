@@ -322,7 +322,7 @@ module geofence ( clk,reset,X,Y,valid,is_inside);
     assign valid = (cs == OUTPUT) ? 1'd1 : 1'd0;
 
     always @(*) begin
-        if (In_OuterProduct[0][0] == In_OuterProduct[1][0] &&  In_OuterProduct[1][0] == In_OuterProduct[2][0] && In_OuterProduct[2][0] == In_OuterProduct[3][0] && In_OuterProduct[3][0] == In_OuterProduct[4][0] && In_OuterProduct[4][0] == In_OuterProduct[5][0] ) begin
+        if (In_OuterProduct[0][23] == In_OuterProduct[1][23] &&  In_OuterProduct[1][23] == In_OuterProduct[2][23] && In_OuterProduct[2][23] == In_OuterProduct[3][23] && In_OuterProduct[3][23] == In_OuterProduct[4][23] && In_OuterProduct[4][23] == In_OuterProduct[5][23] ) begin
             is_inside = 1'd1;
         end
         else begin
