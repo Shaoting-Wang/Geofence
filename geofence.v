@@ -12,17 +12,15 @@ module geofence ( clk,reset,X,Y,valid,is_inside);
     // ------------------------------------------------- 
 	//                Regs or Wires                 
 	// -------------------------------------------------
-    reg [3:0] cs, ns;
+    reg [2:0] cs, ns;
     reg [2:0] RD_cnt, VEC_cnt, OP_cnt, SORT_cnt;
-    reg [10:0] X_input [6:0];
-    reg [10:0] Y_input [6:0];
-    reg signed [11:0] X_vector [4:0];
-    reg signed [11:0] Y_vector [4:0];
-    reg signed [11:0] a, b, c, d;
-    reg signed [23:0] OP [4:0];
+    reg signed [10:0] X_input [6:0];
+    reg signed [10:0] Y_input [6:0];
+    reg signed [11:0] X_vector [5:0];
+    reg signed [11:0] Y_vector [5:0];
+    reg signed [11:0] a1, a2, b1, b2, c1, c2, d1, d2;
+    reg signed [23:0] OP1, OP2;
     
-    reg signed [11:0] InX [5:0];
-    reg signed [11:0] InY [5:0];
     reg signed [23:0] In_OuterProduct [5:0];
 
 
@@ -33,11 +31,10 @@ module geofence ( clk,reset,X,Y,valid,is_inside);
     parameter IDLE = 0;
     parameter RD = 1;
     parameter VECTOR = 2;
-    parameter OUTER_PRODUCT = 3;
-    parameter SORT = 4;
-    parameter IN_VECTOR = 5;
-    parameter IN_OP = 6;
-    parameter OUTPUT = 7;
+    parameter SORT = 3;
+    parameter IN_VEC = 4;
+    parameter IN_OP = 5;
+    parameter OUTPUT = 6;
 
     // -------------------------------------------------
 	//                Finite State Machine                 
@@ -45,7 +42,7 @@ module geofence ( clk,reset,X,Y,valid,is_inside);
 
     always@(posedge clk or posedge reset) begin
         if (reset) begin
-            cs <= IDLE;
+            cs <= RD;
         end
         else begin
             cs <= ns;
@@ -56,10 +53,9 @@ module geofence ( clk,reset,X,Y,valid,is_inside);
         case (cs)
             IDLE : ns = RD;
             RD : ns = (RD_cnt == 3'd6) ? VECTOR : RD;
-            VECTOR : ns = (VEC_cnt == 3'd4) ? OUTER_PRODUCT : VECTOR;
-            OUTER_PRODUCT : ns = (OP_cnt == 3'd4) ? SORT : OUTER_PRODUCT;
-            SORT : ns = (SORT_cnt == 3'd4) ? IN_VECTOR : SORT;
-            IN_VECTOR : ns = IN_OP;
+            VECTOR : ns = (VEC_cnt == 3'd4) ? SORT : VECTOR;
+            SORT : ns = (SORT_cnt == 3'd4) ? IN_VEC : SORT;
+            IN_VEC : ns = (VEC_cnt == 3'd5) ? IN_OP : IN_VEC;
             IN_OP : ns = (OP_cnt == 3'd5) ? OUTPUT : IN_OP;
             OUTPUT : ns = RD;
             default : ns = cs;
@@ -89,19 +85,19 @@ module geofence ( clk,reset,X,Y,valid,is_inside);
         else begin
             case (cs)
                 RD : begin
-                    X_input[RD_cnt] <= {1'd0, X};
-                    Y_input[RD_cnt] <= {1'd0, Y};
+                    X_input[RD_cnt] <= {$signed(1'd0), $signed(X)};
+                    Y_input[RD_cnt] <= {$signed(1'd0), $signed(Y)};
                 end
                 SORT : begin
                     case (SORT_cnt)
                         3'd0, 3'd2, 3'd4 : begin
-                            if (OP[0] > OP[1]) begin
+                            if (OP1[23] == 0) begin
                                 X_input[2] <= X_input[3];
                                 X_input[3] <= X_input[2];
                                 Y_input[2] <= Y_input[3];
                                 Y_input[3] <= Y_input[2];
                             end
-                            if (OP[2] > OP[3]) begin
+                            if (OP2[23] == 0) begin
                                 X_input[4] <= X_input[5];
                                 X_input[5] <= X_input[4];
                                 Y_input[4] <= Y_input[5];
@@ -109,13 +105,13 @@ module geofence ( clk,reset,X,Y,valid,is_inside);
                             end
                         end
                         3'd1, 3'd3 : begin
-                            if (OP[1] > OP[2]) begin
+                            if (OP1[23] == 0) begin
                                 X_input[3] <= X_input[4];
                                 X_input[4] <= X_input[3];
                                 Y_input[3] <= Y_input[4];
                                 Y_input[4] <= Y_input[3];
                             end
-                            if (OP[3] > OP[4]) begin
+                            if (OP2[23] == 0) begin
                                 X_input[5] <= X_input[6];
                                 X_input[6] <= X_input[5];
                                 Y_input[5] <= Y_input[6];
@@ -132,128 +128,125 @@ module geofence ( clk,reset,X,Y,valid,is_inside);
 	//                Vector                 
 	// -------------------------------------------------
 
-    always@(posedge clk or posedge reset) begin
+    always @(posedge clk or posedge reset) begin
         if (reset) begin
-            for (i = 0; i < 5; i = i+1) begin
-                X_vector[i] <= 0;
-                Y_vector[i] <= 0;
+            for (i = 0; i < 6; i = i+1) begin
+                X_vector[i] <= 0; Y_vector[i] <= 0;
             end
         end
         else begin
-            if (cs == VECTOR) begin
-                case (VEC_cnt)
-                    3'd0 : {X_vector[0], Y_vector[0]} <= {($signed(X_input[2]) - $signed(X_input[1])), ($signed(Y_input[2]) - $signed(Y_input[1]))};
-                    3'd1 : {X_vector[1], Y_vector[1]} <= {($signed(X_input[3]) - $signed(X_input[1])), ($signed(Y_input[3]) - $signed(Y_input[1]))};
-                    3'd2 : {X_vector[2], Y_vector[2]} <= {($signed(X_input[4]) - $signed(X_input[1])), ($signed(Y_input[4]) - $signed(Y_input[1]))};
-                    3'd3 : {X_vector[3], Y_vector[3]} <= {($signed(X_input[5]) - $signed(X_input[1])), ($signed(Y_input[5]) - $signed(Y_input[1]))};
-                    3'd4 : {X_vector[4], Y_vector[4]} <= {($signed(X_input[6]) - $signed(X_input[1])), ($signed(Y_input[6]) - $signed(Y_input[1]))};
-                endcase
-            end
+            case (cs)
+                VECTOR : begin
+                    X_vector[VEC_cnt] <= X_input[VEC_cnt+2] - X_input[1]; Y_vector[VEC_cnt] <= Y_input[VEC_cnt+2] - Y_input[1];
+                end
+                SORT : begin
+                    case (SORT_cnt)
+                        3'd0, 3'd2, 3'd4 : begin
+                            if (OP1[23] == 0) begin
+                                X_vector[0] <= X_vector[1];
+                                X_vector[1] <= X_vector[0];
+                                Y_vector[0] <= Y_vector[1];
+                                Y_vector[1] <= Y_vector[0];
+                            end
+                            if (OP2[23] == 0) begin
+                                X_vector[2] <= X_vector[3];
+                                X_vector[3] <= X_vector[2];
+                                Y_vector[2] <= Y_vector[3];
+                                Y_vector[3] <= Y_vector[2];
+                            end
+                        end
+                        3'd1, 3'd3 : begin
+                            if (OP1[23] == 0) begin
+                                X_vector[1] <= X_vector[2];
+                                X_vector[2] <= X_vector[1];
+                                Y_vector[1] <= Y_vector[2];
+                                Y_vector[2] <= Y_vector[1];
+                            end
+                            if (OP2[23] == 0) begin
+                                X_vector[3] <= X_vector[4];
+                                X_vector[4] <= X_vector[3];
+                                Y_vector[3] <= Y_vector[4];
+                                Y_vector[4] <= Y_vector[3];
+                            end
+                        end
+                    endcase
+                end
+                IN_VEC : begin
+                    X_vector[VEC_cnt] <= X_input[VEC_cnt+1] - X_input[0]; Y_vector[VEC_cnt] <= Y_input[VEC_cnt+1] - Y_input[0];
+                end
+            endcase
         end
     end
 
-    always@(posedge clk or posedge reset) begin
+    always @(posedge clk or posedge reset) begin
         if (reset) begin
             VEC_cnt <= 0;
         end
         else begin
-            VEC_cnt <= (cs == VECTOR) ? (VEC_cnt + 1) : 0;
+            VEC_cnt <= (cs == VECTOR || cs == IN_VEC) ? (VEC_cnt + 1) : 0;
         end
     end
-
+        
     // -------------------------------------------------
 	//                Outer_Product                 
 	// -------------------------------------------------
 
 
-    always@(posedge clk or posedge reset) begin
-        if (reset) begin
-            for (i = 0; i < 5; i = i+1) begin
-                OP[i] <= 0;
-            end
-        end
-        else begin
-            if (cs == OUTER_PRODUCT) begin
-                OP[OP_cnt] <= (a * d) - (b * c);
-            end
-            else if (cs == SORT) begin
-                case (SORT_cnt)
-                    3'd0, 3'd2, 3'd4 : begin
-                        if (OP[0] > OP[1]) begin
-                            OP[0] <= OP[1];
-                            OP[1] <= OP[0];
-                        end
-                        if (OP[2] > OP[3]) begin
-                            OP[2] <= OP[3];
-                            OP[3] <= OP[2];
-                        end
-                    end
-                    3'd1, 3'd3 : begin
-                        if (OP[1] > OP[2]) begin
-                            OP[1] <= OP[2];
-                            OP[2] <= OP[1];
-                        end
-                        if (OP[3] > OP[4]) begin
-                            OP[3] <= OP[4];
-                            OP[4] <= OP[3];
-                        end
-                    end
-                endcase
-            end
-        end
+    always @(*) begin
+       OP1 = (a1 * d1) - (b1 * c1); 
+       OP2 = (a2 * d2) - (b2 * c2);
     end
 
     always @(*) begin
-        if (cs == OUTER_PRODUCT) begin
-            case (OP_cnt)
-                3'd0 : begin
-                    a = X_vector[0]; b = Y_vector[0]; c = X_vector[0]; d = Y_vector[0];
-                end
-                3'd1 : begin
-                    a = X_vector[1]; b = Y_vector[1]; c = X_vector[0]; d = Y_vector[0];
-                end
-                3'd2 : begin
-                    a = X_vector[2]; b = Y_vector[2]; c = X_vector[0]; d = Y_vector[0];
-                end
-                3'd3 : begin
-                    a = X_vector[3]; b = Y_vector[3]; c = X_vector[0]; d = Y_vector[0];
-                end
-                3'd4 : begin
-                    a = X_vector[4]; b = Y_vector[4]; c = X_vector[0]; d = Y_vector[0];
-                end
-                default : begin
-                    a = 0; b = 0; c = 0; d = 0;
-                end
-            endcase
-        end
-        else if (cs == IN_OP) begin
-            case (OP_cnt)
-                3'd0 : begin
-                    a = InX[1]; b = InY[1]; c = InX[0]; d = InY[0];
-                end
-                3'd1 : begin
-                    a = InX[2]; b = InY[2]; c = InX[1]; d = InY[1];
-                end
-                3'd2 : begin
-                    a = InX[3]; b = InY[3]; c = InX[2]; d = InY[2];
-                end
-                3'd3 : begin
-                    a = InX[4]; b = InY[4]; c = InX[3]; d = InY[3];
-                end
-                3'd4 : begin
-                    a = InX[5]; b = InY[5]; c = InX[4]; d = InY[4];
-                end
-                3'd5 : begin
-                    a = InX[0]; b = InY[0]; c = InX[5]; d = InY[5];
-                end
-                default : begin
-                    a = 0; b = 0; c = 0; d = 0;
-                end
-            endcase
-        end
-        else begin
-            a = 0; b = 0; c = 0; d = 0;
-        end
+        case (cs)
+            SORT : begin
+                case (SORT_cnt)
+                    3'd0, 3'd2, 3'd4 : begin
+                        a1 = X_vector[0]; b1 = Y_vector[0]; c1 = X_vector[1]; d1 = Y_vector[1]; a2 = X_vector[2]; b2 = Y_vector[2]; c2 = X_vector[3]; d2 = Y_vector[3];
+                    end
+                    3'd1, 3'd3 : begin
+                        a1 = X_vector[1]; b1 = Y_vector[1]; c1 = X_vector[2]; d1 = Y_vector[2]; a2 = X_vector[3]; b2 = Y_vector[3]; c2 = X_vector[4]; d2 = Y_vector[4];
+                    end
+                    default : begin
+                        a1 = 0; b1 = 0; c1 = 0; d1 = 0; a2 = 0; b2 = 0; c2 = 0; d2 = 0;
+                    end
+                endcase
+            end
+            IN_OP : begin
+                case (OP_cnt)
+                    3'd0 : begin
+                        a1 = X_vector[0]; b1 = Y_vector[0]; c1 = X_vector[5]; d1 = Y_vector[5];
+                        a2 = 0; b2 = 0; c2 = 0; d2 = 0;
+                    end
+                    3'd1 : begin
+                        a1 = X_vector[1]; b1 = Y_vector[1]; c1 = X_vector[0]; d1 = Y_vector[0];
+                        a2 = 0; b2 = 0; c2 = 0; d2 = 0;
+                    end
+                    3'd2 : begin
+                        a1 = X_vector[2]; b1 = Y_vector[2]; c1 = X_vector[1]; d1 = Y_vector[1];
+                        a2 = 0; b2 = 0; c2 = 0; d2 = 0;
+                    end
+                    3'd3 : begin
+                        a1 = X_vector[3]; b1 = Y_vector[3]; c1 = X_vector[2]; d1 = Y_vector[2];
+                        a2 = 0; b2 = 0; c2 = 0; d2 = 0;
+                    end
+                    3'd4 : begin
+                        a1 = X_vector[4]; b1 = Y_vector[4]; c1 = X_vector[3]; d1 = Y_vector[3];
+                        a2 = 0; b2 = 0; c2 = 0; d2 = 0;
+                    end
+                    3'd5 : begin
+                        a1 = X_vector[5]; b1 = Y_vector[5]; c1 = X_vector[4]; d1 = Y_vector[4];
+                        a2 = 0; b2 = 0; c2 = 0; d2 = 0;
+                    end
+                    default : begin
+                        a1 = 0; b1 = 0; c1 = 0; d1 = 0; a2 = 0; b2 = 0; c2 = 0; d2 = 0;
+                    end
+                endcase
+            end
+            default : begin
+                a1 = 0; b1 = 0; c1 = 0; d1 = 0; a2 = 0; b2 = 0; c2 = 0; d2 = 0;
+            end
+        endcase
     end
 
     always@(posedge clk or posedge reset) begin  // Outer_Product counter
@@ -261,7 +254,7 @@ module geofence ( clk,reset,X,Y,valid,is_inside);
             OP_cnt <= 0;
         end
         else begin
-            OP_cnt <= (cs == OUTER_PRODUCT || cs == IN_OP) ? (OP_cnt + 1) : 0;
+            OP_cnt <= (cs == IN_OP) ? (OP_cnt + 1) : 0;
         end
     end
 
@@ -282,22 +275,6 @@ module geofence ( clk,reset,X,Y,valid,is_inside);
 	//                   IN_VECTOR                 
 	// -------------------------------------------------
 
-    always@(posedge clk or posedge reset) begin
-        if (reset) begin
-            for (i = 0; i < 6; i = i+1) begin
-                InX[i] <= 0; InY[i] <= 0;
-            end
-        end
-        else begin
-            if (cs == IN_VECTOR) begin
-                for (i = 0; i < 6; i = i+1) begin
-                    InX[i] <= $signed(X_input[i+1]) - $signed(X_input[0]);
-                    InY[i] <= $signed(Y_input[i+1]) - $signed(Y_input[0]);
-                end
-            end
-        end
-    end
-
     // -------------------------------------------------
 	//                      IN_OP                 
 	// -------------------------------------------------
@@ -310,11 +287,10 @@ module geofence ( clk,reset,X,Y,valid,is_inside);
         end
         else begin
             if (cs == IN_OP) begin
-                In_OuterProduct[OP_cnt] <= (a * d) - (b * c);
+                In_OuterProduct[OP_cnt] <= OP1;
             end
         end
     end
-
     // -------------------------------------------------
 	//                      OUTPUT                 
 	// -------------------------------------------------
@@ -331,4 +307,3 @@ module geofence ( clk,reset,X,Y,valid,is_inside);
     end
 
 endmodule
-
